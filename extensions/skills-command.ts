@@ -47,8 +47,8 @@ export default function (pi: ExtensionAPI) {
 
 		allSkillNames = skillCommands.map((c) => c.name);
 
-		// Start with all enabled by default
-		enabledSkills = new Set(allSkillNames);
+		// Start with all disabled by default — user must explicitly enable
+		enabledSkills = new Set<string>();
 	}
 
 	// ── System prompt filtering ────────────────────────────────────────
@@ -169,19 +169,12 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			// Notify result
-			const enabledCount = enabledSkills.size;
-			const totalCount = skillCommands.length;
 			if (changed) {
-				if (enabledCount === totalCount) {
-					ctx.ui.notify(`All ${totalCount} skills enabled`, "success");
-				} else if (enabledCount === 0) {
-					ctx.ui.notify("All skills disabled", "warning");
-				} else {
-					ctx.ui.notify(
-						`${enabledCount}/${totalCount} skills enabled`,
-						enabledCount > 0 ? "info" : "warning",
-					);
-				}
+				const count = enabledSkills.size;
+				ctx.ui.notify(
+					`${count} skill${count === 1 ? "" : "s"} enabled`,
+					count > 0 ? "success" : "warning",
+				);
 			}
 		},
 	});
