@@ -152,6 +152,17 @@ export default function (pi: ExtensionAPI) {
 				// Execute the update
 				const result = execSync(cmd, { encoding: "utf-8", timeout: 120_000 });
 
+				// Auto-apply UI patches after successful update
+				try {
+					const patchScript = `${require("node:os").homedir()}/.pi/ui-patches/apply.sh`;
+					if (require("node:fs").existsSync(patchScript)) {
+						execSync(`bash "${patchScript}"`, { encoding: "utf-8", timeout: 10_000 });
+						ctx.ui.notify("UI patches applied", "info");
+					}
+				} catch (patchErr) {
+					ctx.ui.notify(`Patches: ${patchErr instanceof Error ? patchErr.message : String(patchErr)}`, "warning");
+				}
+
 				// ---- VISUAL SUCCESS NOTIFICATION ----
 				ctx.ui.setStatus(STATUS_ID, "✓ update completed");
 
