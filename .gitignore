@@ -1,0 +1,5 @@
+# Sensitive credentials — do not commit
+auth.json
+
+# Session files (conversation history) — too large and not portable
+sessions/
