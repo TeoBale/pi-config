@@ -154,7 +154,7 @@ export default function (pi: ExtensionAPI) {
 
 				// Auto-apply UI patches after successful update
 				try {
-					const patchScript = `${require("node:os").homedir()}/.pi/ui-patches/apply.sh`;
+					const patchScript = `${require("node:os").homedir()}/.pi/agent/ui-patches/apply.sh`;
 					if (require("node:fs").existsSync(patchScript)) {
 						execSync(`bash "${patchScript}"`, { encoding: "utf-8", timeout: 10_000 });
 						ctx.ui.notify("UI patches applied", "info");
