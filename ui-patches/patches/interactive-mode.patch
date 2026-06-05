@@ -1,0 +1,13 @@
+--- /Users/teobale/.nvm/versions/node/v24.13.0/lib/node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/interactive-mode.js	2026-06-05 10:30:01
++++ /tmp/interactive-mode-patched.js	2026-06-05 10:28:49
+@@ -4049,6 +4049,10 @@
+                                 manualCodeReject = undefined;
+                             }
+                         });
++                    }
++                    else if (providerId === "github-copilot") {
++                        // GitHub Copilot polls after onAuth
++                        dialog.showWaiting("Waiting for browser authentication...");
+                     }
+                     // For Anthropic: onPrompt is called immediately after
+                 },
