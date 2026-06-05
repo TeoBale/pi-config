@@ -3,3 +3,4 @@ auth.json
 
 # Session files (conversation history) — too large and not portable
 sessions/
+.DS_Store
