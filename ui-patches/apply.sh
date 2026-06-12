@@ -22,14 +22,19 @@ fi
 echo "Applying UI patches..."
 
 # --- pi-tui patches (via patch-package) ---
-# Copy patch into the project's patches/ directory for patch-package
-mkdir -p "$PI_AGENT_DIR/patches"
-PI_TUI_PATCH="${PATCH_DIR}/patches/@earendil-works+pi-tui+0.78.1.patch"
-if [ -f "$PI_TUI_PATCH" ]; then
-    cp "$PI_TUI_PATCH" "$PI_AGENT_DIR/patches/"
-    (cd "$PI_AGENT_DIR" && npx patch-package) || echo "  pi-tui patch failed (version mismatch?)"
+# Auto-detect pi-tui version and find matching patch
+PI_TUI_VERSION=$(node -e "try{console.log(require('${PI_AGENT_DIR}/node_modules/@earendil-works/pi-tui/package.json').version)}catch(e){}" 2>/dev/null || echo "")
+if [ -n "$PI_TUI_VERSION" ]; then
+    PI_TUI_PATCH="${PATCH_DIR}/patches/@earendil-works+pi-tui+${PI_TUI_VERSION}.patch"
+    if [ -f "$PI_TUI_PATCH" ]; then
+        mkdir -p "$PI_AGENT_DIR/patches"
+        cp "$PI_TUI_PATCH" "$PI_AGENT_DIR/patches/"
+        (cd "$PI_AGENT_DIR" && npx patch-package) || echo "  pi-tui patch failed (version mismatch?)"
+    else
+        echo "  Warning: no pi-tui patch for version ${PI_TUI_VERSION}"
+    fi
 else
-    echo "  Warning: pi-tui patch not found at $PI_TUI_PATCH"
+    echo "  Warning: could not detect pi-tui version"
 fi
 
 # --- interactive-mode patch (standard patch) ---
@@ -49,6 +54,7 @@ echo "What was patched:"
 echo "  • Autocomplete list rendered ABOVE the editor (not below)"
 echo "  • Custom word navigation (Ctrl+Left / Ctrl+Right)"
 echo "  • GitHub Copilot OAuth polling message"
+echo "  • Gray input bar background (Cursor CLI style)"
 echo ""
 echo "Extensions loaded from ~/.pi/agent/extensions/:"
 echo "  • startup-header.ts — Centered ASCII logo on new sessions"

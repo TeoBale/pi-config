@@ -1,0 +1,282 @@
+diff --git a/node_modules/@earendil-works/pi-tui/dist/components/editor.js b/node_modules/@earendil-works/pi-tui/dist/components/editor.js
+index 28b46a9..f2c2685 100644
+--- a/node_modules/@earendil-works/pi-tui/dist/components/editor.js
++++ b/node_modules/@earendil-works/pi-tui/dist/components/editor.js
+@@ -1,9 +1,9 @@
+ import { getKeybindings } from "../keybindings.js";
+ import { decodePrintableKey, matchesKey } from "../keys.js";
+ import { KillRing } from "../kill-ring.js";
+-import { CURSOR_MARKER } from "../tui.js";
++import { CURSOR_MARKER, EDITOR_ANCHOR_MARKER } from "../tui.js";
+ import { UndoStack } from "../undo-stack.js";
+-import { getGraphemeSegmenter, getWordSegmenter, isWhitespaceChar, truncateToWidth, visibleWidth } from "../utils.js";
++import { getGraphemeSegmenter, getWordSegmenter, isPunctuationChar, isWhitespaceChar, truncateToWidth, visibleWidth } from "../utils.js";
+ import { findWordBackward, findWordForward } from "../word-navigation.js";
+ import { SelectList } from "./select-list.js";
+ const graphemeSegmenter = getGraphemeSegmenter();
+@@ -358,6 +358,11 @@ export class Editor {
+         // Store for cursor navigation (must match wrapping width)
+         this.lastWidth = layoutWidth;
+         const horizontal = this.borderColor("─");
++        // Editor background (subtle gray like Cursor CLI input bar)
++        const editorBgOpen = "\x1b[48;2;28;28;28m";
++        const editorBgClose = "\x1b[49m";
++        const editorHalfFgOpen = "\x1b[38;2;28;28;28m";
++        const editorFgClose = "\x1b[39m";
+         // Layout the text
+         const layoutLines = this.layoutText(layoutWidth);
+         // Calculate max visible lines: 30% of terminal height, minimum 5 lines
+@@ -382,20 +387,30 @@ export class Editor {
+         const result = [];
+         const leftPadding = " ".repeat(paddingX);
+         const rightPadding = leftPadding;
+-        // Render top border (with scroll indicator if scrolled down)
+-        if (this.scrollOffset > 0) {
+-            const indicator = `─── ↑ ${this.scrollOffset} more `;
+-            const remaining = width - visibleWidth(indicator);
+-            if (remaining >= 0) {
+-                result.push(this.borderColor(indicator + "─".repeat(remaining)));
+-            }
+-            else {
+-                result.push(this.borderColor(truncateToWidth(indicator, width)));
++        // Render autocomplete above the editor only while it is open. Do not keep
++        // reserved blank rows after it closes, otherwise the input bar is left
++        // floating away from the bottom of the terminal.
++        let didEmitEditorAnchor = false;
++        if (this.autocompleteState && this.autocompleteList) {
++            // While autocomplete is open, reserve a fixed-height area above the
++            // input. This prevents the history above from moving up/down as the
++            // number of suggestions changes while typing. The reserved space is
++            // removed only when autocomplete closes.
++            const autocompleteResult = this.autocompleteList.render(contentWidth);
++            let autoIdx = 0;
++            for (let i = 0; i < this.autocompleteMaxVisible; i++) {
++                const line = autoIdx < autocompleteResult.length ? autocompleteResult[autoIdx++] : "";
++                const lineWidth = visibleWidth(line);
++                const linePadding = " ".repeat(Math.max(0, contentWidth - lineWidth));
++                const anchor = didEmitEditorAnchor ? "" : EDITOR_ANCHOR_MARKER;
++                didEmitEditorAnchor = true;
++                result.push(anchor + `${leftPadding}${line}${linePadding}${rightPadding}`);
+             }
+         }
+-        else {
+-            result.push(horizontal.repeat(width));
+-        }
++        // Cursor-style input bar: no border rules. Use half-block rows for
++        // subtle vertical padding without making the bar feel too thick.
++        const inputAnchor = didEmitEditorAnchor ? "" : EDITOR_ANCHOR_MARKER;
++        result.push(inputAnchor + editorHalfFgOpen + "▄".repeat(width) + editorFgClose);
+         // Render each visible layout line
+         // Emit hardware cursor marker when focused so TUI can position the
+         // hardware cursor for IME candidate-window placement even while
+@@ -417,13 +432,13 @@ export class Editor {
+                     const afterGraphemes = [...this.segment(after, "grapheme")];
+                     const firstGrapheme = afterGraphemes[0]?.segment || "";
+                     const restAfter = after.slice(firstGrapheme.length);
+-                    const cursor = `\x1b[7m${firstGrapheme}\x1b[0m`;
++                    const cursor = `\x1b[7m${firstGrapheme}\x1b[27m`;
+                     displayText = before + marker + cursor + restAfter;
+                     // lineVisibleWidth stays the same - we're replacing, not adding
+                 }
+                 else {
+                     // Cursor is at the end - add highlighted space
+-                    const cursor = "\x1b[7m \x1b[0m";
++                    const cursor = "\x1b[7m \x1b[27m";
+                     displayText = before + marker + cursor;
+                     lineVisibleWidth = lineVisibleWidth + 1;
+                     // If cursor overflows content width into the padding, flag it
+@@ -432,31 +447,15 @@ export class Editor {
+                     }
+                 }
+             }
+-            // Calculate padding based on actual visible width
+-            const padding = " ".repeat(Math.max(0, contentWidth - lineVisibleWidth));
+-            const lineRightPadding = cursorInPadding ? rightPadding.slice(1) : rightPadding;
+-            // Render the line (no side borders, just horizontal lines above and below)
+-            result.push(`${leftPadding}${displayText}${padding}${lineRightPadding}`);
+-        }
+-        // Render bottom border (with scroll indicator if more content below)
+-        const linesBelow = layoutLines.length - (this.scrollOffset + visibleLines.length);
+-        if (linesBelow > 0) {
+-            const indicator = `─── ↓ ${linesBelow} more `;
+-            const remaining = width - visibleWidth(indicator);
+-            result.push(this.borderColor(indicator + "─".repeat(Math.max(0, remaining))));
+-        }
+-        else {
+-            result.push(horizontal.repeat(width));
+-        }
+-        // Add autocomplete list if active
+-        if (this.autocompleteState && this.autocompleteList) {
+-            const autocompleteResult = this.autocompleteList.render(contentWidth);
+-            for (const line of autocompleteResult) {
+-                const lineWidth = visibleWidth(line);
+-                const linePadding = " ".repeat(Math.max(0, contentWidth - lineWidth));
+-                result.push(`${leftPadding}${line}${linePadding}${rightPadding}`);
+-            }
+-        }
++            // Calculate padding based on actual visible width. Add small internal left padding
++            // so the cursor/text sits like Cursor CLI's input bar rather than touching the edge.
++            const inputLeftPadding = "  ";
++            const inputVisibleWidth = visibleWidth(inputLeftPadding) + lineVisibleWidth;
++            const padding = " ".repeat(Math.max(0, width - inputVisibleWidth));
++            // Render as a single filled input row, no top/bottom borders.
++            result.push(editorBgOpen + `${inputLeftPadding}${displayText}${padding}` + editorBgClose);
++        }
++        result.push(editorHalfFgOpen + "▀".repeat(width) + editorFgClose);
+         return result;
+     }
+     handleInput(data) {
+@@ -1541,10 +1540,40 @@ export class Editor {
+             }
+             return;
+         }
+-        this.setCursorCol(findWordBackward(currentLine, this.state.cursorCol, {
+-            segment: (text) => this.segment(text, "word"),
+-            isAtomicSegment: isPasteMarker,
+-        }));
++        const textBeforeCursor = currentLine.slice(0, this.state.cursorCol);
++        const graphemes = [...this.segment(textBeforeCursor)];
++        let newCol = this.state.cursorCol;
++        // Skip trailing whitespace
++        while (graphemes.length > 0 &&
++            !isPasteMarker(graphemes[graphemes.length - 1]?.segment || "") &&
++            isWhitespaceChar(graphemes[graphemes.length - 1]?.segment || "")) {
++            newCol -= graphemes.pop()?.segment.length || 0;
++        }
++        if (graphemes.length > 0) {
++            const lastGrapheme = graphemes[graphemes.length - 1]?.segment || "";
++            if (isPasteMarker(lastGrapheme)) {
++                // Paste marker is a single atomic word
++                newCol -= graphemes.pop()?.segment.length || 0;
++            }
++            else if (isPunctuationChar(lastGrapheme)) {
++                // Skip punctuation run
++                while (graphemes.length > 0 &&
++                    isPunctuationChar(graphemes[graphemes.length - 1]?.segment || "") &&
++                    !isPasteMarker(graphemes[graphemes.length - 1]?.segment || "")) {
++                    newCol -= graphemes.pop()?.segment.length || 0;
++                }
++            }
++            else {
++                // Skip word run
++                while (graphemes.length > 0 &&
++                    !isWhitespaceChar(graphemes[graphemes.length - 1]?.segment || "") &&
++                    !isPunctuationChar(graphemes[graphemes.length - 1]?.segment || "") &&
++                    !isPasteMarker(graphemes[graphemes.length - 1]?.segment || "")) {
++                    newCol -= graphemes.pop()?.segment.length || 0;
++                }
++            }
++        }
++        this.setCursorCol(newCol);
+     }
+     /**
+      * Yank (paste) the most recent kill ring entry at cursor position.
+@@ -1701,10 +1730,41 @@ export class Editor {
+             }
+             return;
+         }
+-        this.setCursorCol(findWordForward(currentLine, this.state.cursorCol, {
+-            segment: (text) => this.segment(text, "word"),
+-            isAtomicSegment: isPasteMarker,
+-        }));
++        const textAfterCursor = currentLine.slice(this.state.cursorCol);
++        const segments = this.segment(textAfterCursor);
++        const iterator = segments[Symbol.iterator]();
++        let next = iterator.next();
++        let newColForward = this.state.cursorCol;
++        // Skip leading whitespace
++        while (!next.done && !isPasteMarker(next.value.segment) && isWhitespaceChar(next.value.segment)) {
++            newColForward += next.value.segment.length;
++            next = iterator.next();
++        }
++        if (!next.done) {
++            const firstGrapheme = next.value.segment;
++            if (isPasteMarker(firstGrapheme)) {
++                // Paste marker is a single atomic word
++                newColForward += firstGrapheme.length;
++            }
++            else if (isPunctuationChar(firstGrapheme)) {
++                // Skip punctuation run
++                while (!next.done && isPunctuationChar(next.value.segment) && !isPasteMarker(next.value.segment)) {
++                    newColForward += next.value.segment.length;
++                    next = iterator.next();
++                }
++            }
++            else {
++                // Skip word run
++                while (!next.done &&
++                    !isWhitespaceChar(next.value.segment) &&
++                    !isPunctuationChar(next.value.segment) &&
++                    !isPasteMarker(next.value.segment)) {
++                    newColForward += next.value.segment.length;
++                    next = iterator.next();
++                }
++            }
++        }
++        this.setCursorCol(newColForward);
+     }
+     // Slash menu only allowed on the first line of the editor
+     isSlashMenuAllowed() {
+@@ -1892,8 +1952,14 @@ export class Editor {
+         this.autocompletePrefix = "";
+     }
+     cancelAutocomplete() {
++        const wasShowingAutocomplete = this.isShowingAutocomplete();
+         this.cancelAutocompleteRequest();
+         this.clearAutocompleteUi();
++        // Closing autocomplete changes the editor height. Force a full redraw so
++        // the terminal clears stale rows and the input bar snaps back to bottom.
++        if (wasShowingAutocomplete) {
++            this.tui.requestRender(true);
++        }
+     }
+     isShowingAutocomplete() {
+         return this.autocompleteState !== null;
+diff --git a/node_modules/@earendil-works/pi-tui/dist/tui.js b/node_modules/@earendil-works/pi-tui/dist/tui.js
+index 31d2f71..18d2da0 100644
+--- a/node_modules/@earendil-works/pi-tui/dist/tui.js
++++ b/node_modules/@earendil-works/pi-tui/dist/tui.js
+@@ -40,6 +40,7 @@ export function isFocusable(component) {
+  * TUI finds and strips this marker, then positions the hardware cursor there.
+  */
+ export const CURSOR_MARKER = "\x1b_pi:c\x07";
++export const EDITOR_ANCHOR_MARKER = "\x1b_pi:editor-anchor\x07";
+ export { visibleWidth };
+ /** Parse a SizeValue into absolute value given a reference size */
+ function parseSizeValue(value, referenceSize) {
+@@ -857,6 +858,26 @@ export class TUI extends Container {
+      * @param height - Terminal height (visible viewport size)
+      * @returns Cursor position { row, col } or null if no marker found
+      */
++    anchorEditorToBottom(lines, height) {
++        const markerIndex = lines.findIndex((line) => line.includes(EDITOR_ANCHOR_MARKER));
++        if (markerIndex === -1) {
++            return lines;
++        }
++        lines[markerIndex] = lines[markerIndex].replace(EDITOR_ANCHOR_MARKER, "");
++        const before = lines.slice(0, markerIndex);
++        const anchored = lines.slice(markerIndex);
++        // If the anchored block itself is taller than the viewport, keep its tail.
++        if (anchored.length >= height) {
++            return anchored.slice(anchored.length - height);
++        }
++        // Build an exact viewport-height frame: recent history above, then any
++        // spacer needed, then the editor/footer block at the bottom.
++        const availableAbove = height - anchored.length;
++        const visibleBefore = before.slice(Math.max(0, before.length - availableAbove));
++        const spacerCount = Math.max(0, availableAbove - visibleBefore.length);
++        const spacer = Array.from({ length: spacerCount }, () => "");
++        return [...visibleBefore, ...spacer, ...anchored];
++    }
+     extractCursorPosition(lines, height) {
+         // Only scan the bottom `height` lines (visible viewport)
+         const viewportTop = Math.max(0, lines.length - height);
+@@ -896,6 +917,8 @@ export class TUI extends Container {
+         if (this.overlayStack.length > 0) {
+             newLines = this.compositeOverlays(newLines, width, height);
+         }
++        // Keep editor/input anchored to the bottom when content is shorter than viewport.
++        newLines = this.anchorEditorToBottom(newLines, height);
+         // Extract cursor position before applying line resets (marker must be found first)
+         const cursorPos = this.extractCursorPosition(newLines, height);
+         newLines = this.applyLineResets(newLines);

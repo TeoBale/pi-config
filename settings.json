@@ -1,7 +1,12 @@
 {
-  "lastChangelogVersion": "0.78.1",
+  "lastChangelogVersion": "0.79.1",
   "defaultProvider": "deepseek",
   "defaultModel": "deepseek-v4-pro",
-  "theme": "dark",
-  "defaultThinkingLevel": "high"
+  "theme": "cursor-gray",
+  "defaultThinkingLevel": "high",
+  "packages": [],
+  "terminal": {
+    "imageWidthCells": 120
+  },
+  "editorPaddingX": 3
 }
